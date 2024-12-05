@@ -27,7 +27,7 @@ import os
 import logging
 import unittest
 from decimal import Decimal
-from service.models import Product, Category, db
+from service.models import Product, Category, db, DataValidationError
 from service import app
 from tests.factories import ProductFactory
 
@@ -104,3 +104,137 @@ class TestProductModel(unittest.TestCase):
     #
     # ADD YOUR TEST CASES HERE
     #
+    def test_read_a_product(self):
+        """It should Read a Product"""
+        product = ProductFactory()
+        product.id = None
+        product.create()
+        self.assertIsNotNone(product.id)
+        found_product = Product.find(product.id)
+        self.assertEqual(found_product.name, product.name)
+        self.assertEqual(found_product.description, product.description)
+        self.assertEqual(Decimal(found_product.price), product.price)
+        self.assertEqual(found_product.available, product.available)
+        self.assertEqual(found_product.category, product.category)
+
+    def test_update_a_product(self):
+        """It should Update a Product"""
+        product = ProductFactory()
+        product.id = None
+        product.create()
+        logging.info("The product was created with the desired properties.")
+        self.assertIsNotNone(product.id)
+        original_id = product.id
+        product.name = "pizza"
+        product.price = 100.00
+        product.description = "This is the best pizza."
+        product.update()
+        self.assertEqual(product.id, original_id)
+        self.assertEqual(product.name, "pizza")
+        self.assertEqual(product.price, 100.00)
+        all_product = product.all()
+        self.assertEqual(len(all_product), 1)
+        self.assertEqual(all_product[0].id, original_id)
+        self.assertEqual(all_product[0].description, "This is the best pizza.")
+
+        # test update with none id
+        try:
+            product.id = None
+            product.update()
+        except DataValidationError as err:
+            self.assertTrue(err)
+
+    def test_delete_a_product(self):
+        """It should Delete a Product"""
+        product = ProductFactory()
+        product.id = None
+        product.create()
+        self.assertEqual(len(Product.all()), 1)
+        product.delete()
+        self.assertEqual(len(Product.all()), 0)
+
+    def test_list_all_products(self):
+        """It should List all Products in the database"""
+        products = Product.all()
+        self.assertEqual(len(products), 0)
+        for _ in range(5):
+            product = ProductFactory()
+            product.create()
+        products = product.all()
+        self.assertEqual(len(products), 5)
+
+    def test_find_by_name(self):
+        """It should Find a Product by Name"""
+        products = ProductFactory.create_batch(5)
+        for product in products:
+            product.create()
+        products = product.all()
+        self.assertEqual(len(products), 5)
+        name = products[0].name
+        count = len([product for product in products if product.name == name])
+        found = Product.find_by_name(name)
+        self.assertEqual(found.count(), count)
+        for product in found:
+            self.assertEqual(product.name, name)
+    
+    def test_find_by_availability(self):
+        """It should Find Products by Availability"""
+        products = ProductFactory.create_batch(10)
+        for product in products:
+            product.create()
+        available = products[0].available
+        count = len([product for product in products if product.available == available])
+        available_found = Product.find_by_availability(available)
+        self.assertEqual(available_found.count(), count)
+        for product in available_found:
+            self.assertEqual(product.available, available)
+
+    def test_find_by_category(self):
+        """It should Find Products by Category"""
+        products = ProductFactory.create_batch(10)
+        for product in products:
+            product.create()
+        category = products[0].category
+        count = len([product for product in products if product.category == category])
+        category_found = Product.find_by_category(category)
+        self.assertEqual(category_found.count(), count)
+        for product in category_found:
+            self.assertEqual(product.category, category)
+
+    def test_find_by_price(self):
+        """It should Find Products by Price"""
+        products = ProductFactory.create_batch(10)
+        for product in products:
+            product.create()
+        price = products[0].price
+        count = len([product for product in products if product.price == price])
+        price_found = Product.find_by_price(price)
+        self.assertEqual(price_found.count(), count)
+        for product in price_found:
+            self.assertEqual(product.price, price)
+        
+        # Test if price is str
+        Product.find_by_price(str(price))
+        self.assertEqual(price_found.count(), count)
+        for product in price_found:
+            self.assertEqual(product.price, price)
+
+    def test_deserialize(self):
+        product = ProductFactory()
+        product.id = None
+        product.create()
+        self.assertEqual(len(product.all()), 1)
+        data = product.serialize()
+        deserialize_data = product.deserialize(data)
+        self.assertEqual(deserialize_data.name, data["name"])
+        self.assertEqual(deserialize_data.description, data["description"])
+        self.assertEqual(deserialize_data.price, Decimal(data["price"]))
+        self.assertEqual(deserialize_data.available, data["available"])
+        self.assertEqual(deserialize_data.category, getattr(Category, data["category"]))
+
+        try:
+            data["available"] = 1
+            Product.deserialize(self, data)
+        except DataValidationError as err:
+            self.assertTrue(err)
+        
